@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 
 	execHelper "github.com/hashicorp/otto/helper/exec"
 	"github.com/hashicorp/otto/ui"
+  "github.com/mitchellh/go-homedir"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -66,4 +68,74 @@ func ListKeys() ([]*agent.Key, error) {
 func Add(ui ui.Ui, privateKeyPath string) error {
 	cmd := exec.Command("ssh-add", privateKeyPath)
 	return execHelper.Run(ui, cmd)
+}
+
+func VerifyCreds(ui ui.Ui, publicKeyPath string) error {
+  found, err := HasKey(publicKeyPath)
+  if err != nil {
+    return SshAgentError(err)
+  }
+  if !found {
+    ok, _ := GuessAndLoadPrivateKey(
+      ui, publicKeyPath)
+    if ok {
+      ui.Message(
+        "A private key was found and loaded. Otto will now check\n" +
+          "the SSH Agent again and continue if the correct key is loaded")
+
+      found, err = HasKey(publicKeyPath)
+      if err != nil {
+        return SshAgentError(err)
+      }
+    }
+  }
+
+  if !found {
+    return SshAgentError(fmt.Errorf(
+      "You specified an SSH public key of: %q, but the private key from this\n"+
+        "keypair is not loaded the SSH Agent. To load it, run:\n\n"+
+        "  ssh-add [PATH_TO_PRIVATE_KEY]",
+      publicKeyPath))
+  }
+  return nil
+}
+
+func SshAgentError(err error) error {
+  return fmt.Errorf(
+    "Otto uses your SSH Agent to authenticate with instances\n"+
+      "but it could not verify that your SSH key is loaded into the agent.\n"+
+      "The error message follows:\n\n%s", err)
+}
+
+// GuessAndLoadPrivateKey takes a path to a public key and determines if a
+// private key exists by just stripping ".pub" from the end of it. if so,
+// it attempts to load that key into the agent.
+func GuessAndLoadPrivateKey(ui ui.Ui, pubKeyPath string) (bool, error) {
+  fullPath, err := homedir.Expand(pubKeyPath)
+  if err != nil {
+    return false, err
+  }
+  if !strings.HasSuffix(fullPath, ".pub") {
+    return false, fmt.Errorf("No .pub suffix, cannot guess path.")
+  }
+  privKeyGuess := strings.TrimSuffix(fullPath, ".pub")
+  if _, err := os.Stat(privKeyGuess); os.IsNotExist(err) {
+    return false, fmt.Errorf("No file at guessed path.")
+  }
+
+  ui.Header("Loading key into SSH Agent")
+  ui.Message(fmt.Sprintf(
+    "The key you provided (%s) was not found in your SSH Agent.", pubKeyPath))
+  ui.Message(fmt.Sprintf(
+    "However, Otto found a private key here: %s", privKeyGuess))
+  ui.Message(fmt.Sprintf(
+    "Automatically running 'ssh-add %s'.", privKeyGuess))
+  ui.Message("If your SSH key has a passphrase, you will be prompted for it.")
+  ui.Message("")
+
+  if err := Add(ui, privKeyGuess); err != nil {
+    return false, err
+  }
+
+  return true, nil
 }

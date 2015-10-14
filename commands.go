@@ -11,7 +11,9 @@ import (
 	appPHP "github.com/hashicorp/otto/builtin/app/php"
 	appRuby "github.com/hashicorp/otto/builtin/app/ruby"
 	foundationConsul "github.com/hashicorp/otto/builtin/foundation/consul"
+	foundationDeis "github.com/hashicorp/otto/builtin/foundation/deis"
 	infraAws "github.com/hashicorp/otto/builtin/infra/aws"
+	infraDo "github.com/hashicorp/otto/builtin/infra/digitalocean"
 
 	"github.com/hashicorp/otto/app"
 	"github.com/hashicorp/otto/appfile/detect"
@@ -79,12 +81,14 @@ func init() {
 	apps.Add(appRuby.Tuples.Map(app.StructFactory(new(appRuby.App))))
 
 	foundations := foundationConsul.Tuples.Map(foundation.StructFactory(new(foundationConsul.Foundation)))
+	foundations.Add(foundationDeis.Tuples.Map(foundation.StructFactory(new(foundationDeis.Foundation))))
 
 	meta := command.Meta{
 		CoreConfig: &otto.CoreConfig{
 			Apps:        apps,
 			Foundations: foundations,
 			Infrastructures: map[string]infrastructure.Factory{
+				"digitalocean": infraDo.Infra,
 				"aws": infraAws.Infra,
 			},
 		},
