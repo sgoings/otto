@@ -7,7 +7,7 @@ variable "prefix" {
 }
 
 variable "region" {
-  default = "sfo1"
+  default = "nyc1"
 }
 
 variable "size" {
@@ -20,4 +20,8 @@ variable "ssh_keys" {
 
 variable "do_token" {
   description = "Your Digital Ocean auth token"
+}
+
+variable "user" {
+  default = "sgoings"
 }

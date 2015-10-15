@@ -5,7 +5,7 @@ provider "digitalocean" {
 resource "digitalocean_droplet" "deis" {
   count = "${var.instances}"
   image = "coreos-stable"
-  name = "${var.prefix}-${count.index+1}"
+  name = "${var.prefix}-${var.user}-${count.index+1}"
   region = "${var.region}"
   size = "${var.size}"
   backups = "False"

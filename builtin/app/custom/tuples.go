@@ -8,4 +8,5 @@ import (
 // that it can support.
 var Tuples = app.TupleSlice([]app.Tuple{
 	{"custom", "*", "*"},
+  {"custom", "digitalocean", "coreos-cluster"},
 })

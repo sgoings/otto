@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/otto/directory"
 	"github.com/hashicorp/otto/app"
 	"github.com/hashicorp/otto/foundation"
 	"github.com/hashicorp/otto/helper/bindata"
@@ -14,8 +16,9 @@ import (
 	"github.com/hashicorp/otto/helper/oneline"
 	"github.com/hashicorp/otto/helper/packer"
 	"github.com/hashicorp/otto/helper/schema"
-	"github.com/hashicorp/otto/helper/terraform"
+	// "github.com/hashicorp/otto/helper/terraform"
 	"github.com/hashicorp/otto/helper/vagrant"
+	ottoExec "github.com/hashicorp/otto/helper/exec"
 )
 
 //go:generate go-bindata -pkg=custom -nomemcopy -nometadata ./data/...
@@ -117,39 +120,67 @@ func (a *App) Build(ctx *app.Context) error {
 }
 
 func (a *App) Deploy(ctx *app.Context) error {
-	// Determine if we set a Terraform path. If we didn't, then
-	// tell the user we can't deploy.
-	path := filepath.Join(ctx.Dir, "deploy", "terraform_path")
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return errors.New(strings.TrimSpace(errTerraformNotSet))
-		}
 
-		return err
-	}
+	appInfra := ctx.Appfile.ActiveInfrastructure()
+  lookup := directory.Lookup{Infra: appInfra.Type}
+  infra, err := ctx.Directory.GetInfra(&directory.Infra{Lookup: lookup})
+  os.Setenv("DEISCTL_TUNNEL", infra.Outputs["ip"])
 
-	// Read the actual TF dir
-	tfdir, err := oneline.Read(path)
-	if err != nil {
-		return fmt.Errorf(
-			"Error reading the Terraform module directory: %s\n\n"+
-				"An Otto recompile with `otto compile` usually fixes this.",
-			err)
-	}
+	cmd := exec.Command("deis", "register", 
+											"http://deis." + infra.Outputs["ip"] + ".xip.io",
+											"--username=test",
+											"--password=asdf1234",
+											"--email=test@test.com")
+  cmd.Env = os.Environ()
+  err = ottoExec.Run(ctx.Ui, cmd)
 
-	// Determine if we set a Packer path. If we didn't, we disable
-	// the build loading for deploys.
-	disableBuild := true
-	path = filepath.Join(ctx.Dir, "build", "packer_path")
-	if _, err := os.Stat(path); err == nil {
-		disableBuild = false
-	}
+  cmd = exec.Command("deis", "create", ctx.Application.Name)
+  cmd.Env = os.Environ()
+  err = ottoExec.Run(ctx.Ui, cmd)
 
-	// But if we did, then deploy using Terraform
-	return terraform.Deploy(&terraform.DeployOptions{
-		Dir:          tfdir,
-		DisableBuild: disableBuild,
-	}).Route(ctx)
+  cmd = exec.Command("deis", "keys:add", "/Users/sethgoings/.ssh/deis-test.pub")
+  cmd.Env = os.Environ()
+  err = ottoExec.Run(ctx.Ui, cmd)
+
+  cmd = exec.Command("git", "push", "deis", "master")
+  cmd.Env = os.Environ()
+  err = ottoExec.Run(ctx.Ui, cmd)
+
+  return err
+
+	// // Determine if we set a Terraform path. If we didn't, then
+	// // tell the user we can't deploy.
+	// path := filepath.Join(ctx.Dir, "deploy", "terraform_path")
+	// if _, err := os.Stat(path); err != nil {
+	// 	if os.IsNotExist(err) {
+	// 		return errors.New(strings.TrimSpace(errTerraformNotSet))
+	// 	}
+
+	// 	return err
+	// }
+
+	// // Read the actual TF dir
+	// tfdir, err := oneline.Read(path)
+	// if err != nil {
+	// 	return fmt.Errorf(
+	// 		"Error reading the Terraform module directory: %s\n\n"+
+	// 			"An Otto recompile with `otto compile` usually fixes this.",
+	// 		err)
+	// }
+
+	// // Determine if we set a Packer path. If we didn't, we disable
+	// // the build loading for deploys.
+	// disableBuild := true
+	// path = filepath.Join(ctx.Dir, "build", "packer_path")
+	// if _, err := os.Stat(path); err == nil {
+	// 	disableBuild = false
+	// }
+
+	// // But if we did, then deploy using Terraform
+	// return terraform.Deploy(&terraform.DeployOptions{
+	// 	Dir:          tfdir,
+	// 	DisableBuild: disableBuild,
+	// }).Route(ctx)
 }
 
 func (a *App) Dev(ctx *app.Context) error {
